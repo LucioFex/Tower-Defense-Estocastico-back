@@ -64,6 +64,14 @@ class Scenario:
     dt_sample: float = 0.5       # paso de muestreo para series/samples [s]
     seed: int = 42               # semilla del PRNG (reproducibilidad)
 
+    # --- Extensiones opt-in (None = comportamiento base, no alteran el engine) ---
+    # Arribos NO estacionarios: lista [(t_inicio, lambda), ...] ordenada por t.
+    # Si se define, sobreescribe `lam` según el tramo temporal vigente.
+    lam_schedule: list | None = None
+    # Tipos de enemigo (V.A. discreta): lista [(prob, factor_mu, nombre), ...].
+    # El tiempo de servicio usa mu*factor_mu (factor<1 => enemigo "fuerte", más lento de matar).
+    enemy_types: list | None = None
+
     layout: Layout = field(default_factory=Layout)
 
     def params_dict(self) -> dict:

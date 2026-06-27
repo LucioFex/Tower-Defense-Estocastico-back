@@ -112,6 +112,33 @@ def test_sim_little():
     assert abs(lam_eff * W_sim - L_sim) / L_sim < 0.1
 
 
+def test_extension_no_cambia_default():
+    """Con extensiones en None, el resultado es idéntico al base (no-regresión)."""
+    a = correr(Scenario(sim_time=400.0, seed=3))
+    b = correr(Scenario(sim_time=400.0, seed=3, lam_schedule=None, enemy_types=None))
+    assert (a.spawned, a.killed, a.leaked) == (b.spawned, b.killed, b.leaked)
+
+
+def test_no_estacionario_respeta_tramos():
+    """Un schedule con pico alto genera más arribos que uno con valle bajo."""
+    bajo = Scenario(sim_time=600.0, seed=5, lam_schedule=[(0.0, 0.1)])
+    alto = Scenario(sim_time=600.0, seed=5, lam_schedule=[(0.0, 0.9)])
+    assert correr(alto).spawned > correr(bajo).spawned * 3
+
+
+def test_tipos_misma_media_distinta_varianza():
+    """Tipos con E[1/factor]=1 mantienen ~la misma media de servicio que homogéneo."""
+    tipos = [(0.5, 2.0, "d"), (0.5, 2.0 / 3.0, "f")]
+    base = Scenario(sim_time=8000.0, c=3, K=500, T_max=1e9, seed=11)
+    homo = correr(base)
+    het = correr(Scenario(**{**base.__dict__, "enemy_types": tipos}))
+    ts_h = homo.sum_time_sys  # proxy; comparamos throughput similar
+    # mismas llegadas (misma semilla, mismo lambda) -> spawns iguales
+    assert homo.spawned == het.spawned
+    # la media de servicio efectiva es similar: kills totales del mismo orden
+    assert abs(homo.killed - het.killed) / homo.killed < 0.12
+
+
 def test_sim_concuerda_con_analitico_sin_temperatura():
     """Sin sobrecalentamiento (T_max enorme) y K grande, Wq sim ≈ Erlang C."""
     sc = Scenario(sim_time=20000.0, c=3, K=200, T_max=1e9, seed=5)

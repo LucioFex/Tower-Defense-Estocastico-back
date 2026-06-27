@@ -111,7 +111,12 @@ class TowerDefenseSim:
         self.env = simpy.Environment()
         self.queue = simpy.Store(self.env)            # cola FIFO de enemigos
         self.towers = [Tower(i, sc) for i in range(sc.c)]
-        self.stream = ExponentialStream(sc.seed)
+        # Streams INDEPENDIENTES por fuente de aleatoriedad (números aleatorios comunes):
+        # así activar tipos de enemigo NO perturba la secuencia de arribos, y comparar
+        # escenarios (homogéneo vs heterogéneo, c distinto) aísla el efecto estudiado.
+        self.stream_arr = ExponentialStream(sc.seed)            # arribos
+        self.stream_srv = ExponentialStream(sc.seed + 10_007)   # servicio
+        self.stream_type = ExponentialStream(sc.seed + 20_011)  # tipo de enemigo
         self.serving = 0                              # enemigos en servicio
         self.res = SimResult(scenario=sc)
         self.res.base_hp = sc.base_hp
@@ -137,11 +142,39 @@ class TowerDefenseSim:
             self.res.sys_area += self._in_system() * dt
         self._last_int_t = now
 
+    # ---- extensiones opt-in ---------------------------------------------- #
+    def _current_lam(self) -> float:
+        """Tasa de arribos vigente (no estacionario si hay lam_schedule)."""
+        if not self.sc.lam_schedule:
+            return self.sc.lam
+        now = self.env.now
+        lam = self.sc.lam_schedule[0][1]
+        for t0, val in self.sc.lam_schedule:
+            if now >= t0:
+                lam = val
+            else:
+                break
+        return lam
+
+    def _service_mu(self) -> tuple[float, str]:
+        """Tasa de servicio efectiva para el próximo enemigo (tipos opt-in)."""
+        if not self.sc.enemy_types:
+            return self.sc.mu, ""
+        r = self.stream_type.uniform()
+        acc = 0.0
+        for prob, factor, nombre in self.sc.enemy_types:
+            acc += prob
+            if r <= acc:
+                return self.sc.mu * factor, nombre
+        # por redondeo de probabilidades, último tipo
+        prob, factor, nombre = self.sc.enemy_types[-1]
+        return self.sc.mu * factor, nombre
+
     # ---- procesos --------------------------------------------------------- #
     def arrivals(self):
-        """Proceso generador de arribos: Exp(lambda)."""
+        """Proceso generador de arribos: Exp(lambda), estacionario o por tramos."""
         while True:
-            yield self.env.timeout(self.stream.sample(self.sc.lam))
+            yield self.env.timeout(self.stream_arr.sample(self._current_lam()))
             now = self.env.now
             eid = self._next_eid
             self._next_eid += 1
@@ -173,7 +206,8 @@ class TowerDefenseSim:
             tower.go_busy(now)
             self._ev(now, "start_service", enemy_id=enemy["id"], tower_id=tower.id)
 
-            ts = self.stream.sample(self.sc.mu)
+            mu_eff, _tipo = self._service_mu()
+            ts = self.stream_srv.sample(mu_eff)
             busy_start = now
             yield self.env.timeout(ts)
 

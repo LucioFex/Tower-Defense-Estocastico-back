@@ -18,7 +18,8 @@ exporter.py        Arma el output.json según el contrato + barrido (sweep) de c
 validate_schema.py Auto-auditoría del contrato (8 invariantes) — sella la build
 main.py            Módulo A — CLI: corre simulación + sweep y exporta output.json
 analysis.py        Módulo B — lee output.json, genera gráficos e imprime conclusiones
-tests/test_modelo.py  Tests de validación (fórmulas, PRNG, Little, sim vs analítico)
+experiments.py     Módulo B+ — réplicas+IC, escenario no estacionario, tipos de enemigo
+tests/test_modelo.py  Tests de validación (fórmulas, PRNG, Little, sim vs analítico, extensiones)
 ```
 
 ## Instalación
@@ -44,9 +45,19 @@ python analysis.py                   # lee output.json -> figs/*.png + conclusio
 python analysis.py otra.json --outdir figs2
 ```
 
+### Módulo B+ — Experimentos avanzados
+```bash
+python experiments.py                # los 3 estudios -> figs_exp/*.png + conclusiones
+python experiments.py --reps 20 --only ci
+```
+1. **Réplicas + IC 95%** (reducción de varianza; `c*` robusto sobre N semillas).
+2. **No estacionario** (oleadas λ(t)): demuestra *dimensionar al pico, no al promedio*.
+3. **Tipos de enemigo** (V.A. discreta): a igual media de servicio, más varianza ⇒ más fuga
+   (Pollaczek-Khinchine). Activable también vía `Scenario(enemy_types=..., lam_schedule=...)`.
+
 ### Tests / auditoría
 ```bash
-python tests/test_modelo.py          # 12 tests (sin pytest) o: python -m pytest -q
+python tests/test_modelo.py          # 15 tests (sin pytest) o: python -m pytest -q
 python validate_schema.py output.json
 ```
 
