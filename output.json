@@ -8,7 +8,7 @@
   "dt_sample": 0.5,
   "num_towers": 3,
   "queue_capacity": 10,
-  "generated_at": "2026-06-27T19:51:26",
+  "generated_at": "2026-06-27T19:54:24",
   "canvas": {
    "w": 1280,
    "h": 720
@@ -107,6 +107,7 @@
    13,
    14
   ],
+  "base_hp_init": 100,
   "base_hp_end": 69
  },
  "events": [
