@@ -15,6 +15,7 @@ import math
 from dataclasses import dataclass, field
 
 import simpy
+from simpy.resources.store import PriorityItem
 
 from config import Scenario
 from prng import ExponentialStream
@@ -100,6 +101,9 @@ class SimResult:
     sum_wait_q: float = 0.0
     sum_time_sys: float = 0.0
     towers: list = field(default_factory=list)
+    # espera en cola desagregada por tipo de enemigo (para el estudio de prioridades)
+    wait_by_type: dict = field(default_factory=dict)
+    n_by_type: dict = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -109,7 +113,9 @@ class TowerDefenseSim:
     def __init__(self, sc: Scenario):
         self.sc = sc
         self.env = simpy.Environment()
-        self.queue = simpy.Store(self.env)            # cola FIFO de enemigos
+        # Cola: FIFO (Store) o por prioridad no-preemptiva (PriorityStore).
+        # Con prioridad, el "fuerte" (menor factor_mu) se atiende antes al liberarse una torre.
+        self.queue = simpy.PriorityStore(self.env) if sc.priority else simpy.Store(self.env)
         self.towers = [Tower(i, sc) for i in range(sc.c)]
         # Streams INDEPENDIENTES por fuente de aleatoriedad (números aleatorios comunes):
         # así activar tipos de enemigo NO perturba la secuencia de arribos, y comparar
@@ -156,19 +162,21 @@ class TowerDefenseSim:
                 break
         return lam
 
-    def _service_mu(self) -> tuple[float, str]:
-        """Tasa de servicio efectiva para el próximo enemigo (tipos opt-in)."""
+    def _pick_type(self) -> tuple[float, str]:
+        """Sortea el tipo del enemigo EN EL SPAWN: devuelve (factor_mu, nombre).
+
+        Homogéneo (sin enemy_types): no consume aleatoriedad -> default reproducible.
+        """
         if not self.sc.enemy_types:
-            return self.sc.mu, ""
+            return 1.0, "uniforme"
         r = self.stream_type.uniform()
         acc = 0.0
         for prob, factor, nombre in self.sc.enemy_types:
             acc += prob
             if r <= acc:
-                return self.sc.mu * factor, nombre
-        # por redondeo de probabilidades, último tipo
+                return factor, nombre
         prob, factor, nombre = self.sc.enemy_types[-1]
-        return self.sc.mu * factor, nombre
+        return factor, nombre
 
     # ---- procesos --------------------------------------------------------- #
     def arrivals(self):
@@ -189,25 +197,34 @@ class TowerDefenseSim:
                 continue
 
             self._integrate()
-            enemy = {"id": eid, "arrival": now}
-            self.queue.put(enemy)
+            factor, tipo = self._pick_type()          # el tipo se fija al aparecer
+            enemy = {"id": eid, "arrival": now, "mu_factor": factor, "tipo": tipo}
+            if self.sc.priority:
+                # prioridad = factor_mu (menor = más fuerte = antes); +eid desempata por FIFO
+                prio = factor + eid * 1e-6
+                self.queue.put(PriorityItem(prio, enemy))
+            else:
+                self.queue.put(enemy)
             self._ev(now, "enqueue", enemy_id=eid, queue_len=len(self.queue.items))
             self.res.max_queue = max(self.res.max_queue, len(self.queue.items))
 
     def tower_proc(self, tower: Tower):
-        """Proceso de una torre: toma enemigos FIFO y los atiende; se enfría/sobrecalienta."""
+        """Proceso de una torre: toma el siguiente enemigo (FIFO o prioridad) y lo atiende."""
         while True:
-            enemy = yield self.queue.get()            # FIFO; bloquea si vacío
+            item = yield self.queue.get()             # bloquea si la cola está vacía
+            enemy = item.item if self.sc.priority else item
             now = self.env.now
             self._integrate()
             self.serving += 1
             wait = now - enemy["arrival"]
             self.res.sum_wait_q += wait
+            tipo = enemy.get("tipo", "uniforme")
+            self.res.wait_by_type[tipo] = self.res.wait_by_type.get(tipo, 0.0) + wait
+            self.res.n_by_type[tipo] = self.res.n_by_type.get(tipo, 0) + 1
             tower.go_busy(now)
             self._ev(now, "start_service", enemy_id=enemy["id"], tower_id=tower.id)
 
-            mu_eff, _tipo = self._service_mu()
-            ts = self.stream_srv.sample(mu_eff)
+            ts = self.stream_srv.sample(self.sc.mu * enemy["mu_factor"])
             busy_start = now
             yield self.env.timeout(ts)
 

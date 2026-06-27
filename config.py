@@ -71,6 +71,9 @@ class Scenario:
     # Tipos de enemigo (V.A. discreta): lista [(prob, factor_mu, nombre), ...].
     # El tiempo de servicio usa mu*factor_mu (factor<1 => enemigo "fuerte", más lento de matar).
     enemy_types: list | None = None
+    # Disciplina de cola: False = FIFO; True = prioridad NO-preemptiva por fuerza del enemigo
+    # (menor factor_mu = más fuerte = mayor prioridad = atendido antes). Requiere enemy_types.
+    priority: bool = False
 
     layout: Layout = field(default_factory=Layout)
 

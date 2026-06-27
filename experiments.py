@@ -214,6 +214,70 @@ def estudio_tipos(base: Scenario, reps: int) -> None:
 
 
 # --------------------------------------------------------------------------- #
+#  Estudio 4: prioridad no-preemptiva (regla cμ)                                 #
+# --------------------------------------------------------------------------- #
+def estudio_prioridad(base: Scenario, reps: int) -> None:
+    print("\n" + "=" * 64)
+    print("  ESTUDIO 4 — Prioridad NO-preemptiva (atender primero al 'fuerte')")
+    print("=" * 64)
+    tipos = [(0.5, 2.0, "debil"), (0.5, 2.0 / 3.0, "fuerte")]
+    W_FUERTE = 3.0   # importancia relativa del enemigo fuerte (peso del costo de espera)
+    seeds = list(range(3000, 3000 + reps))
+    print("  50% débil (μ×2) / 50% fuerte (μ×2/3). Misma media de servicio.")
+    print(f"  El 'fuerte' pesa ×{W_FUERTE:.0f} en el costo de espera ponderado (regla cμ).")
+
+    def correr_disc(priority: bool) -> dict:
+        acc = {"debil": [], "fuerte": [], "total": [], "leak": [], "wpond": []}
+        for s in seeds:
+            sc = Scenario(**{**base.__dict__, "enemy_types": tipos,
+                             "priority": priority, "seed": s})
+            sc.layout = base.layout
+            r = correr(sc)
+            wq = {}
+            for tipo in ("debil", "fuerte"):
+                n = r.n_by_type.get(tipo, 0)
+                wq[tipo] = (r.wait_by_type.get(tipo, 0.0) / n) if n else 0.0
+                acc[tipo].append(wq[tipo])
+            acc["total"].append(r.sum_wait_q / r.killed if r.killed else 0.0)
+            acc["leak"].append(r.leaked / r.spawned if r.spawned else 0.0)
+            acc["wpond"].append((W_FUERTE * wq["fuerte"] + wq["debil"]) / (W_FUERTE + 1))
+        return acc
+
+    fifo, prio = correr_disc(False), correr_disc(True)
+    print(f"\n  {'disciplina':<12}{'Wq fuerte':>12}{'Wq débil':>12}"
+          f"{'Wq total':>11}{'Wq pond.':>11}{'fuga%':>8}")
+    res = {}
+    for label, d in (("FIFO", fifo), ("Prioridad", prio)):
+        wf = mean_ci(d["fuerte"]); wd = mean_ci(d["debil"])
+        wt = mean_ci(d["total"]); wp = mean_ci(d["wpond"]); lk = mean_ci(d["leak"])
+        res[label] = dict(wf=wf, wd=wd, wt=wt, wp=wp, lk=lk)
+        print(f"  {label:<12}{wf[0]:>8.2f}±{wf[1]:<3.1f}{wd[0]:>8.2f}±{wd[1]:<3.1f}"
+              f"{wt[0]:>10.2f}{wp[0]:>10.2f}{lk[0]*100:>7.1f}")
+
+    d_fuerte = res["Prioridad"]["wf"][0] - res["FIFO"]["wf"][0]
+    d_pond = res["Prioridad"]["wp"][0] - res["FIFO"]["wp"][0]
+    print(f"\n  → La prioridad cambia la espera del fuerte en {d_fuerte:+.2f}s y la "
+          f"ponderada en {d_pond:+.2f}s.")
+    print("    El Wq TOTAL casi no cambia (disciplina work-conserving) y la FUGA tampoco")
+    print("    (es por bloqueo de capacidad, no por espera): la prioridad REASIGNA la espera,")
+    print("    no la elimina. Conviene si el 'fuerte' es más costoso (regla cμ).")
+
+    # gráfico de barras: Wq por clase, FIFO vs Prioridad
+    fig, ax = plt.subplots(figsize=(8, 5))
+    clases = ["fuerte", "debil", "ponderada"]
+    fifo_v = [res["FIFO"]["wf"][0], res["FIFO"]["wd"][0], res["FIFO"]["wp"][0]]
+    prio_v = [res["Prioridad"]["wf"][0], res["Prioridad"]["wd"][0], res["Prioridad"]["wp"][0]]
+    x = range(len(clases))
+    ax.bar([i - 0.2 for i in x], fifo_v, 0.4, label="FIFO", color="#7f8c8d")
+    ax.bar([i + 0.2 for i in x], prio_v, 0.4, label="Prioridad (fuerte primero)",
+           color="#8e44ad")
+    ax.set_xticks(list(x)); ax.set_xticklabels(clases)
+    ax.set(ylabel="Wq [s]", title="Estudio 4 — Espera en cola por clase: FIFO vs. prioridad")
+    ax.legend(); ax.grid(alpha=.3, axis="y")
+    _save(fig, "08_prioridad.png")
+
+
+# --------------------------------------------------------------------------- #
 def _save(fig, name: str) -> str:
     import os
     os.makedirs("figs_exp", exist_ok=True)
@@ -226,7 +290,8 @@ def _save(fig, name: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Tower Defense Estocástico — experimentos")
     ap.add_argument("--reps", type=int, default=12, help="n° de réplicas")
-    ap.add_argument("--only", choices=["ci", "olas", "tipos"], help="correr solo un estudio")
+    ap.add_argument("--only", choices=["ci", "olas", "tipos", "prioridad"],
+                    help="correr solo un estudio")
     ap.add_argument("--sweep-max", type=int, default=6)
     args = ap.parse_args()
 
@@ -237,6 +302,8 @@ def main() -> None:
         estudio_no_estacionario(base)
     if args.only in (None, "tipos"):
         estudio_tipos(base, args.reps)
+    if args.only in (None, "prioridad"):
+        estudio_prioridad(base, args.reps)
     print("\n" + "=" * 64)
     print("  Experimentos completos. Figuras en figs_exp/")
 

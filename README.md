@@ -53,11 +53,16 @@ python experiments.py --reps 20 --only ci
 1. **Réplicas + IC 95%** (reducción de varianza; `c*` robusto sobre N semillas).
 2. **No estacionario** (oleadas λ(t)): demuestra *dimensionar al pico, no al promedio*.
 3. **Tipos de enemigo** (V.A. discreta): a igual media de servicio, más varianza ⇒ más fuga
-   (Pollaczek-Khinchine). Activable también vía `Scenario(enemy_types=..., lam_schedule=...)`.
+   (Pollaczek-Khinchine).
+4. **Prioridad no-preemptiva** (`Scenario(priority=True)`, `simpy.PriorityStore`): atender al
+   "fuerte" primero baja su Wq a costa del débil; el Wq total y la fuga no cambian (work-conserving) —
+   conviene si el fuerte es más costoso (**regla cμ**).
+
+Activable también vía `Scenario(enemy_types=..., lam_schedule=..., priority=...)`.
 
 ### Tests / auditoría
 ```bash
-python tests/test_modelo.py          # 15 tests (sin pytest) o: python -m pytest -q
+python tests/test_modelo.py          # 17 tests (sin pytest) o: python -m pytest -q
 python validate_schema.py output.json
 ```
 

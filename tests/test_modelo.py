@@ -139,6 +139,31 @@ def test_tipos_misma_media_distinta_varianza():
     assert abs(homo.killed - het.killed) / homo.killed < 0.12
 
 
+def test_prioridad_fuerte_espera_menos():
+    """Con prioridad no-preemptiva, el 'fuerte' (factor menor) espera MENOS que con FIFO."""
+    tipos = [(0.5, 2.0, "debil"), (0.5, 2.0 / 3.0, "fuerte")]
+    base = dict(sim_time=3000.0, c=2, K=15, seed=4, enemy_types=tipos)
+
+    def wq_fuerte(priority):
+        r = correr(Scenario(**{**base, "priority": priority}))
+        n = r.n_by_type.get("fuerte", 0)
+        return r.wait_by_type.get("fuerte", 0.0) / n if n else 0.0
+
+    fifo = wq_fuerte(False)
+    prio = wq_fuerte(True)
+    assert prio < fifo, f"prioridad ({prio:.2f}) no redujo la espera del fuerte vs FIFO ({fifo:.2f})"
+
+
+def test_prioridad_work_conserving():
+    """La prioridad reasigna la espera pero el total de kills se mantiene (work-conserving)."""
+    tipos = [(0.5, 2.0, "d"), (0.5, 2.0 / 3.0, "f")]
+    base = dict(sim_time=2000.0, c=2, K=15, seed=8, enemy_types=tipos)
+    a = correr(Scenario(**{**base, "priority": False}))
+    b = correr(Scenario(**{**base, "priority": True}))
+    assert a.spawned == b.spawned                      # mismas llegadas
+    assert abs(a.killed - b.killed) / a.killed < 0.05  # mismo throughput
+
+
 def test_sim_concuerda_con_analitico_sin_temperatura():
     """Sin sobrecalentamiento (T_max enorme) y K grande, Wq sim ≈ Erlang C."""
     sc = Scenario(sim_time=20000.0, c=3, K=200, T_max=1e9, seed=5)
