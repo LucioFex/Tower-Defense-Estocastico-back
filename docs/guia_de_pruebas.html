@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guía de Pruebas — Tower Defense Estocástico</title>
+<style>
+  :root{
+    --bg:#0e1015; --panel:#161a22; --panel2:#1c212c; --ink:#e7ebf2; --muted:#9aa4b5;
+    --line:#283041; --accent:#37e0a6; --accent2:#4aa8ff; --hot:#ff6b4a; --warn:#ffce4a;
+    --code:#0b0d12; --ok:#37e0a6; --chip:#222a38;
+    --u2:#4aa8ff; --u3:#37e0a6; --sim:#b98bff; --val:#ffce4a; --opt:#ff8fc7;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;font-size:16px}
+  code,kbd,pre{font-family:"Cascadia Code","Fira Code",Consolas,"SF Mono",monospace}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---------- header ---------- */
+  header{padding:54px 24px 40px;background:
+      radial-gradient(1200px 400px at 12% -10%, rgba(74,168,255,.18), transparent),
+      radial-gradient(1000px 400px at 88% -20%, rgba(55,224,166,.16), transparent),
+      linear-gradient(180deg,#0b0d12,#0e1015);
+    border-bottom:1px solid var(--line);text-align:center}
+  header .eyebrow{letter-spacing:.22em;text-transform:uppercase;color:var(--accent);
+    font-size:13px;font-weight:700}
+  header h1{margin:.3em 0 .15em;font-size:38px;line-height:1.15}
+  header h1 span{color:var(--accent)}
+  header .sub{color:var(--muted);max-width:760px;margin:8px auto 0;font-size:17px}
+  .meta-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:22px}
+  .chip{background:var(--chip);border:1px solid var(--line);border-radius:999px;
+    padding:6px 14px;font-size:13px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  /* ---------- layout ---------- */
+  main{max-width:980px;margin:0 auto;padding:0 22px 80px}
+  section{margin-top:46px}
+  h2{font-size:26px;margin:0 0 6px;display:flex;align-items:center;gap:12px}
+  h2 .num{background:linear-gradient(135deg,var(--accent2),var(--accent));
+    color:#06281f;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+    font-size:18px;font-weight:800;flex:none}
+  h3{font-size:18px;margin:26px 0 6px}
+  .lead{color:var(--muted);margin:2px 0 14px}
+
+  /* ---------- cards / steps ---------- */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin:16px 0}
+  .card.step{border-left:3px solid var(--accent2)}
+  .goal{color:var(--muted);font-size:15px;margin:0 0 10px}
+
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;margin:10px 0;font-size:13.5px;position:relative}
+  pre.cmd{border-left:3px solid var(--accent)}
+  pre.cmd::before{content:"TERMINAL";position:absolute;top:8px;right:12px;font-size:10px;
+    letter-spacing:.18em;color:var(--muted)}
+  pre.out{border-left:3px solid var(--u3);color:#cfe9dd;background:#0a1410}
+  pre.out::before{content:"SALIDA ESPERADA";position:absolute;top:8px;right:12px;font-size:10px;
+    letter-spacing:.18em;color:#5f7a6e}
+  .c-com{color:#6b7689}      /* comentario */
+  .c-cmd{color:var(--accent)}
+  .c-ok{color:var(--ok);font-weight:600}
+  .c-hi{color:var(--warn)}
+
+  .proves{margin-top:12px;background:var(--panel2);border:1px dashed var(--line);
+    border-radius:10px;padding:12px 14px;font-size:14.5px}
+  .proves b{color:var(--accent)}
+
+  /* ---------- badges ---------- */
+  .tag{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;
+    padding:2px 9px;margin:2px 4px 2px 0;color:#0b0d12;white-space:nowrap}
+  .t-u2{background:var(--u2)} .t-u3{background:var(--u3)} .t-sim{background:var(--sim)}
+  .t-val{background:var(--val)} .t-opt{background:var(--opt)}
+  .ok-pill{display:inline-flex;align-items:center;gap:7px;background:rgba(55,224,166,.12);
+    border:1px solid rgba(55,224,166,.4);color:var(--ok);border-radius:999px;
+    padding:4px 12px;font-size:13px;font-weight:600}
+
+  /* ---------- summary grid ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .tile .k{font-size:13px;color:var(--muted)}
+  .tile .v{font-size:20px;font-weight:800;margin-top:2px}
+  .tile .v.ok{color:var(--ok)}
+
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:var(--ink);font-size:13px;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  td code{color:var(--accent);font-size:13px}
+
+  .note{background:rgba(74,168,255,.08);border:1px solid rgba(74,168,255,.35);
+    border-radius:10px;padding:12px 15px;margin:14px 0;font-size:14.5px}
+  .note.warn{background:rgba(255,206,74,.08);border-color:rgba(255,206,74,.4)}
+
+  /* ---------- toc ---------- */
+  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:16px 20px;margin-top:26px}
+  nav.toc b{display:block;color:var(--muted);font-size:13px;letter-spacing:.12em;
+    text-transform:uppercase;margin-bottom:8px}
+  nav.toc ol{margin:0;padding-left:20px;columns:2;column-gap:30px}
+  nav.toc li{margin:4px 0}
+
+  footer{border-top:1px solid var(--line);margin-top:60px;padding:26px 22px;text-align:center;
+    color:var(--muted);font-size:13px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:10px 0 0}
+  @media(max-width:640px){nav.toc ol{columns:1};header h1{font-size:28px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Simulación de Sistemas · UCEMA · Ing. en Informática</div>
+  <h1>Guía de Pruebas — <span>Tower&nbsp;Defense Estocástico</span></h1>
+  <p class="sub">Paso a paso para correr <b>todas</b> las verificaciones del proyecto y comprobar
+     que el modelo de colas funciona, es reproducible y concuerda con la teoría. Cada prueba indica
+     <b>qué tema de la materia</b> demuestra.</p>
+  <div class="meta-row">
+    <span class="chip"><b>Equipo:</b> Luciano Esteban · Thaiel Anaya · Martín Blasson · Luca Sucri</span>
+    <span class="chip"><b>Profesor:</b> Sergio Sirotinsky</span>
+    <span class="chip"><b>Modelo:</b> (M/M/c)(FIFO/K/∞) + temperatura</span>
+  </div>
+</header>
+
+<main>
+
+  <nav class="toc">
+    <b>Contenido</b>
+    <ol>
+      <li><a href="#modelo">El modelo en una frase</a></li>
+      <li><a href="#resumen">Resumen de verificaciones</a></li>
+      <li><a href="#setup">Paso 1 — Preparar el entorno</a></li>
+      <li><a href="#tests">Paso 2 — Tests del modelo (17)</a></li>
+      <li><a href="#main">Paso 3 — Simulación y export</a></li>
+      <li><a href="#schema">Paso 4 — Auditoría del contrato</a></li>
+      <li><a href="#analysis">Paso 5 — Análisis (Módulo B)</a></li>
+      <li><a href="#experiments">Paso 6 — Experimentos (Módulo B+)</a></li>
+      <li><a href="#front">Paso 7 — Frontend en Godot</a></li>
+      <li><a href="#matriz">Temas de la materia ↔ pruebas</a></li>
+    </ol>
+  </nav>
+
+  <!-- =================== MODELO =================== -->
+  <section id="modelo">
+    <h2><span class="num">★</span> El modelo en una frase</h2>
+    <div class="card">
+      <p style="margin:0">Cada <b>torre = servidor</b> de un sistema M/M/c (cola FIFO única);
+      cada <b>enemigo = cliente</b>; una <b>fuga = bloqueo</b> por capacidad finita <code>K</code>.
+      La <b>temperatura</b> (variable continua, ecuación diferencial de enfriamiento de Newton) apaga
+      torres sobrecalentadas, reduce la capacidad efectiva y <b>rompe el supuesto markoviano</b>:
+      por eso <b>simular</b> aporta sobre la fórmula cerrada. El objeto de estudio <b>no es el juego</b>,
+      sino la <b>validación del modelo de colas</b>.</p>
+    </div>
+    <div class="legend">
+      <span class="tag t-u2">Unidad II — Aleatoriedad</span>
+      <span class="tag t-u3">Unidad III — Colas</span>
+      <span class="tag t-sim">Simulación por eventos</span>
+      <span class="tag t-val">Validación</span>
+      <span class="tag t-opt">Extensiones avanzadas</span>
+    </div>
+  </section>
+
+  <!-- =================== RESUMEN =================== -->
+  <section id="resumen">
+    <h2><span class="num">✓</span> Resumen de verificaciones</h2>
+    <p class="lead">Esto es lo que vas a comprobar. Si todo da verde, el proyecto está sano de punta a punta.</p>
+    <div class="grid">
+      <div class="tile"><div class="k">Tests del modelo</div><div class="v ok">17 / 17 OK</div></div>
+      <div class="tile"><div class="k">Contrato output.json</div><div class="v ok">v1.0 válido</div></div>
+      <div class="tile"><div class="k">Ley de Little (consistencia)</div><div class="v ok">error ≈ 1.2 %</div></div>
+      <div class="tile"><div class="k">Óptimo económico</div><div class="v">c* = 3 torres</div></div>
+      <div class="tile"><div class="k">Fuga simulada vs analítica</div><div class="v">4.0 % vs 0.16 %</div></div>
+      <div class="tile"><div class="k">Reproducibilidad</div><div class="v ok">byte-idéntico</div></div>
+      <div class="tile"><div class="k">Front (Godot 4.3)</div><div class="v ok">compila + render</div></div>
+      <div class="tile"><div class="k">Export Web (HTML5)</div><div class="v ok">PWA generado</div></div>
+    </div>
+    <div class="note">⏱️ <b>Tiempo total estimado:</b> ~5 min para todo el backend (pasos 1–6) en una
+      máquina modesta. El front (paso 7) depende de tener Godot instalado.</div>
+  </section>
+
+  <!-- =================== SETUP =================== -->
+  <section id="setup">
+    <h2><span class="num">1</span> Preparar el entorno</h2>
+    <div class="card step">
+      <p class="goal"><b>Objetivo:</b> crear el entorno virtual de Python e instalar las dependencias
+        (<code>simpy</code>, <code>numpy</code>, <code>pandas</code>, <code>matplotlib</code>). Una sola vez.</p>
+<pre class="cmd"><span class="c-com"># Repo del backend (toda la matemática vive acá)</span>
+<span class="c-cmd">cd</span> repositorios/Tower-Defense-Estocastico-back
+<span class="c-cmd">python</span> -m venv .venv
+<span class="c-com"># Activar el venv:</span>
+<span class="c-cmd">source</span> .venv/Scripts/activate      <span class="c-com"># Windows (Git Bash)</span>
+<span class="c-cmd">source</span> .venv/bin/activate          <span class="c-com"># Linux / macOS</span>
+<span class="c-cmd">pip</span> install -r requirements.txt</pre>
+      <div class="note warn">💡 Si ya tenés el <code>.venv</code> creado, alcanza con <b>activarlo</b>.
+        En Windows también podés usar directamente <code>.venv/Scripts/python.exe</code> sin activar.</div>
+    </div>
+  </section>
+
+  <!-- =================== TESTS =================== -->
+  <section id="tests">
+    <h2><span class="num">2</span> Tests del modelo — el corazón de la validación</h2>
+    <p class="lead">17 tests que comprueban, con tolerancias matemáticas, que cada pieza hace lo que la
+       teoría predice. <b>No requieren pytest</b> (corren solos).</p>
+    <div class="card step">
+      <p class="goal"><b>Objetivo:</b> que las 17 afirmaciones del modelo se cumplan.</p>
+<pre class="cmd"><span class="c-cmd">python</span> tests/test_modelo.py        <span class="c-com"># o, si tenés pytest:  python -m pytest -q</span></pre>
+<pre class="out">  <span class="c-ok">PASS</span>  test_exponencial_inversa_formula
+  <span class="c-ok">PASS</span>  test_exponencial_media_empirica
+  <span class="c-ok">PASS</span>  test_gcl_reproducible
+  <span class="c-ok">PASS</span>  test_mm1_peaje
+  <span class="c-ok">PASS</span>  test_mmc_estabilidad
+  <span class="c-ok">PASS</span>  test_mmc_reduce_a_mm1
+  <span class="c-ok">PASS</span>  test_mmck_K_igual_c_es_erlang_b
+  <span class="c-ok">PASS</span>  test_mmck_bloqueo_en_rango
+  <span class="c-ok">PASS</span>  test_no_estacionario_respeta_tramos
+  <span class="c-ok">PASS</span>  test_prioridad_fuerte_espera_menos
+  <span class="c-ok">PASS</span>  test_prioridad_work_conserving
+  <span class="c-ok">PASS</span>  test_sim_balance_enemigos
+  <span class="c-ok">PASS</span>  test_sim_concuerda_con_analitico_sin_temperatura
+  <span class="c-ok">PASS</span>  test_sim_little
+  <span class="c-ok">PASS</span>  test_sim_reproducible
+  <span class="c-ok">PASS</span>  test_tipos_misma_media_distinta_varianza
+  <span class="c-ok">PASS</span>  test_extension_no_cambia_default
+
+<span class="c-ok">17/17 tests OK</span></pre>
+
+      <h3>Qué valida cada grupo de tests</h3>
+      <table>
+        <tr><th>Grupo</th><th>Tests</th><th>Qué demuestra</th></tr>
+        <tr>
+          <td><span class="tag t-u2">Aleatoriedad</span></td>
+          <td><code>exponencial_inversa_formula</code>, <code>exponencial_media_empirica</code>, <code>gcl_reproducible</code></td>
+          <td>La transformada inversa genera Exp(λ) correcta (media empírica ≈ 1/λ) y el generador congruencial es reproducible.</td>
+        </tr>
+        <tr>
+          <td><span class="tag t-u3">Colas (analítico)</span></td>
+          <td><code>mm1_peaje</code>, <code>mmc_estabilidad</code>, <code>mmc_reduce_a_mm1</code>, <code>mmck_bloqueo_en_rango</code>, <code>mmck_K_igual_c_es_erlang_b</code></td>
+          <td>Las fórmulas cerradas son correctas: M/M/1 reproduce el ejemplo del apunte, M/M/c con c=1 ≡ M/M/1, M/M/c/K calcula bloqueo y con K=c da Erlang B.</td>
+        </tr>
+        <tr>
+          <td><span class="tag t-sim">Simulación</span></td>
+          <td><code>sim_little</code>, <code>sim_balance_enemigos</code>, <code>sim_reproducible</code>, <code>sim_concuerda_con_analitico_sin_temperatura</code></td>
+          <td>La simulación cumple la <b>Ley de Little</b>, conserva enemigos (spawn = kill + fuga + en sistema), es reproducible con semilla, y <b>sin temperatura coincide con Erlang C</b> (motor validado).</td>
+        </tr>
+        <tr>
+          <td><span class="tag t-opt">Extensiones</span></td>
+          <td><code>no_estacionario_respeta_tramos</code>, <code>tipos_misma_media_distinta_varianza</code>, <code>prioridad_fuerte_espera_menos</code>, <code>prioridad_work_conserving</code>, <code>extension_no_cambia_default</code></td>
+          <td>Las extensiones opt-in funcionan y <b>no alteran</b> el comportamiento por defecto.</td>
+        </tr>
+      </table>
+      <div class="proves">🎓 <b>Tema clave:</b> el test <code>sim_concuerda_con_analitico_sin_temperatura</code>
+        es el que <b>valida el simulador contra la teoría</b>: si apagamos la temperatura, la simulación
+        tiene que dar lo mismo que la fórmula de Erlang C. Que coincidan es la prueba de que el motor es correcto.</div>
+    </div>
+  </section>
+
+  <!-- =================== MAIN =================== -->
+  <section id="main">
+    <h2><span class="num">3</span> Simulación + export del <code>output.json</code></h2>
+    <div class="card step">
+      <p class="goal"><b>Objetivo:</b> correr el escenario por defecto, barrer c = 1…6 torres, y exportar
+        el <code>output.json</code> (el contrato que consume el frontend). Incluye una <b>auto-auditoría</b>
+        del esquema antes de guardar.</p>
+<pre class="cmd"><span class="c-cmd">python</span> main.py
+<span class="c-com"># Variantes:</span>
+<span class="c-cmd">python</span> main.py --c 4 --lam 0.5 --mu 0.25 --sim 1800 --seed 7
+<span class="c-cmd">python</span> main.py --no-sweep --out otra.json</pre>
+<pre class="out">  TOWER DEFENSE ESTOCÁSTICO — Módulo A (Simulación SimPy)
+  Modelo (M/M/c)(FIFO/K/inf):  c=3  K=10
+  lambda=0.4  mu=0.25  rho=<span class="c-hi">0.533</span>  sim_time=1200.0s  seed=42
+  Enemigos: spawn=455  kill=434  fuga=18  base_hp=82
+  Corriendo barrido de torres c=[1, 2, 3, 4, 5, 6] ...
+  <span class="c-ok">[OK]</span> Auto-auditoría del esquema superada (contrato v1.0).
+  <span class="c-ok">[OK]</span> Exportado 'output.json'  (1815 eventos, 2400 muestras)</pre>
+      <div class="proves">🎓 <b>Tema:</b> simulación por <b>eventos discretos</b> con SimPy (algoritmo de
+        lista de eventos) y <b>reproducibilidad</b> por semilla. <code>ρ = λ/(c·μ) = 0.533 &lt; 1</code> → sistema estable.</div>
+    </div>
+  </section>
+
+  <!-- =================== SCHEMA =================== -->
+  <section id="schema">
+    <h2><span class="num">4</span> Auditoría del contrato de datos</h2>
+    <div class="card step">
+      <p class="goal"><b>Objetivo:</b> verificar que el <code>output.json</code> cumple las 8 invariantes del
+        contrato v1.0 (el frontend depende de esto). <code>main.py</code> ya la corre, pero podés lanzarla suelta.</p>
+<pre class="cmd"><span class="c-cmd">python</span> validate_schema.py output.json</pre>
+<pre class="out"><span class="c-ok">[OK]</span> 'output.json' cumple el contrato v1.0.</pre>
+      <div class="proves">🎓 <b>Tema:</b> desacople <b>backend ↔ frontend</b> mediante un contrato versionado.
+        El backend calcula offline; Godot solo reproduce. <b>Cero acoplamiento en tiempo real.</b></div>
+    </div>
+  </section>
+
+  <!-- =================== ANALYSIS =================== -->
+  <section id="analysis">
+    <h2><span class="num">5</span> Análisis — Módulo B (gráficos + conclusiones)</h2>
+    <div class="card step">
+      <p class="goal"><b>Objetivo:</b> leer el <code>output.json</code>, generar 5 figuras en <code>figs/</code>
+        e imprimir las conclusiones del análisis.</p>
+<pre class="cmd"><span class="c-cmd">python</span> analysis.py
+<span class="c-cmd">python</span> analysis.py otra.json --outdir figs2   <span class="c-com"># sobre otro archivo</span></pre>
+<pre class="out">  [Ley de Little]  λ_eff·W = 0.362·7.350 = 2.658   vs   L_sim = 2.626
+                   error relativo = <span class="c-ok">1.2%  (OK)</span>
+  [Capacidad]  c_min = 2 ;  1ª torre sobre c_min captura <span class="c-hi">89%</span> de la mejora
+               ΔLq por torre: <span class="c-hi">[2.53, 0.25, 0.05, 0.01]</span>
+               → RENDIMIENTO MARGINAL DECRECIENTE
+  [Decisión económica]  c* (torres+fugas) = <span class="c-hi">3</span>
+  [Temperatura]  Fuga simulada (<span class="c-hi">4.0%</span>) vs analítica (0.2%): brecha = +3.8%
+               → la explica la indisponibilidad por temperatura (M/M/c/K no la modela)
+
+  Gráficos: figs/01_series_colas · 02_temperatura · 03_utilizacion
+            · 04_rendimiento_marginal · 05_costo_optimo</pre>
+      <div class="proves">🎓 <b>Temas:</b> <b>Ley de Little</b> (consistencia), <b>rendimiento marginal
+        decreciente</b> al sumar servidores, <b>óptimo económico</b> (costo capacidad + costo fugas), y la
+        <b>brecha simulación–teoría</b> que justifica simular.</div>
+    </div>
+  </section>
+
+  <!-- =================== EXPERIMENTS =================== -->
+  <section id="experiments">
+    <h2><span class="num">6</span> Experimentos avanzados — Módulo B+</h2>
+    <div class="card step">
+      <p class="goal"><b>Objetivo:</b> los 4 estudios que profundizan el análisis. Generan figuras en
+        <code>figs_exp/</code>.</p>
+<pre class="cmd"><span class="c-cmd">python</span> experiments.py
+<span class="c-cmd">python</span> experiments.py --reps 20 --only ci   <span class="c-com"># más réplicas, un solo estudio</span></pre>
+      <table>
+        <tr><th>Estudio</th><th>Qué hace</th><th>Hallazgo</th></tr>
+        <tr><td><b>1. Réplicas + IC 95%</b></td><td>Repite con N semillas y arma intervalos de confianza.</td><td><code>c* = 3</code> robusto (no depende de una corrida afortunada).</td></tr>
+        <tr><td><b>2. No estacionario</b></td><td>Arribos en oleadas λ(t) (valle/pico).</td><td>Dimensionar al <b>promedio</b> → fuga 42% (base destruida); al <b>pico</b> → 10%. <b>Dimensionar al pico.</b></td></tr>
+        <tr><td><b>3. Tipos de enemigo</b></td><td>V.A. discreta con <b>igual media</b> de servicio, distinta varianza.</td><td>Más varianza ⇒ fuga +0.94 pp (intuición de Pollaczek-Khinchine).</td></tr>
+        <tr><td><b>4. Prioridad (regla cμ)</b></td><td>Atender al "fuerte" primero (no-preemptiva).</td><td>Wq del fuerte 4.24→2.15 s; el Wq total y la fuga no cambian (work-conserving): <b>reasigna</b> la espera.</td></tr>
+      </table>
+      <div class="proves">🎓 <b>Temas:</b> <b>reducción de varianza</b> (réplicas, números aleatorios comunes),
+        sistemas <b>no estacionarios</b>, <b>variables aleatorias discretas</b>, y <b>disciplinas de cola</b> con prioridad.</div>
+    </div>
+  </section>
+
+  <!-- =================== FRONT =================== -->
+  <section id="front">
+    <h2><span class="num">7</span> Frontend en Godot — reproducción visual</h2>
+    <p class="lead">El front <b>no calcula nada</b>: lee el <code>output.json</code> y lo reproduce en 2D.
+       Verificar el render es opcional (requiere Godot 4.3+).</p>
+    <div class="card step">
+      <h3>A) Abrir y correr en el editor</h3>
+      <ol style="margin:0">
+        <li>Abrir Godot 4.3+, botón <b>Import</b> → elegir <code>repositorios/Tower-Defense-Estocastico-front/project.godot</code>.</li>
+        <li>Confirmar que <code>output.json</code> está en la raíz del proyecto (copiado del backend).</li>
+        <li>Presionar <b>F5</b> (Play). Controles: <kbd>Espacio</kbd> play/pausa · <kbd>&lt;/&gt;</kbd> velocidad · <kbd>R</kbd> reiniciar.</li>
+      </ol>
+      <div class="note">Deberías ver: 3 torres con su radio de rango, coloreadas <b>azul→rojo</b> según
+        temperatura; enemigos amarillos sobre el camino; líneas de fuego torre→enemigo; la base con
+        barra de vida; y el HUD con λ, μ, ρ, fuga, Wq, Lq.</div>
+
+      <h3>B) Exportar a Web (HTML5)</h3>
+<pre class="cmd"><span class="c-com"># con Godot en el PATH y los export templates de 4.3 instalados:</span>
+godot --headless --export-release "Web" builds/web/index.html</pre>
+      <div class="note warn">Para hostear gratis (GitHub Pages / itch.io) el preset ya trae el
+        <b>service worker PWA</b> que inyecta los headers de aislamiento de origen (COOP/COEP). Probar
+        local requiere servir <code>builds/web/</code> con esos headers.</div>
+
+      <div class="proves">✅ <b>Estado verificado:</b> el proyecto compila sin errores, corre 600 frames
+        sin fallos, y el render se confirmó con una captura real del juego (export web + canvas WebGL).</div>
+    </div>
+  </section>
+
+  <!-- =================== MATRIZ =================== -->
+  <section id="matriz">
+    <h2><span class="num">🎓</span> Temas de la materia ↔ dónde se demuestran</h2>
+    <p class="lead">Esta es la traza explícita de <b>qué entendemos</b> y <b>cómo lo probamos</b> en el código.
+       Útil para defender el TP: cada concepto tiene una prueba ejecutable que lo respalda.</p>
+    <table>
+      <tr><th style="width:24%">Tema de la materia</th><th style="width:30%">Dónde vive en el código</th><th>Prueba que lo demuestra</th></tr>
+
+      <tr><td><span class="tag t-u2">U2</span> Generación de números pseudoaleatorios (congruencial lineal)</td>
+          <td><code>prng.py · CongruentialGenerator</code></td>
+          <td><code>test_gcl_reproducible</code> (Paso 2)</td></tr>
+
+      <tr><td><span class="tag t-u2">U2</span> Transformada inversa para V.A. continuas</td>
+          <td><code>prng.py · exponencial_inversa</code> &nbsp;<code>x = −(1/λ)·ln(R)</code></td>
+          <td><code>test_exponencial_inversa_formula</code>, <code>…media_empirica</code> (Paso 2)</td></tr>
+
+      <tr><td><span class="tag t-u2">U2</span> Variables aleatorias (Exponencial; discreta)</td>
+          <td><code>prng.py · ExponentialStream</code>; tipos de enemigo en <code>config.py</code></td>
+          <td><code>test_tipos_misma_media_distinta_varianza</code> · Estudio 3 (Paso 6)</td></tr>
+
+      <tr><td><span class="tag t-u3">U3</span> Notación de Kendall-Lee · M/M/1</td>
+          <td><code>analytical.py · mmc(...)</code> (caso c=1)</td>
+          <td><code>test_mm1_peaje</code>, <code>test_mmc_reduce_a_mm1</code> (Paso 2)</td></tr>
+
+      <tr><td><span class="tag t-u3">U3</span> M/M/c (Erlang C) y estabilidad ρ&lt;1</td>
+          <td><code>analytical.py · mmc</code>, <code>_erlang_c</code></td>
+          <td><code>test_mmc_estabilidad</code> · barrido en Paso 3</td></tr>
+
+      <tr><td><span class="tag t-u3">U3</span> M/M/c/K (capacidad finita) · probabilidad de bloqueo</td>
+          <td><code>analytical.py · mmck</code> → "fuga"</td>
+          <td><code>test_mmck_bloqueo_en_rango</code>, <code>…K_igual_c_es_erlang_b</code> (Paso 2)</td></tr>
+
+      <tr><td><span class="tag t-u3">U3</span> Ley de Little (L = λ·W)</td>
+          <td>estimadores en <code>simulation.py</code> + chequeo en <code>analysis.py</code></td>
+          <td><code>test_sim_little</code> · error ≈ 1.2% (Pasos 2 y 5)</td></tr>
+
+      <tr><td><span class="tag t-sim">SIM</span> Simulación por eventos discretos (lista de eventos)</td>
+          <td><code>simulation.py · TowerDefenseSim</code> (SimPy = reloj + FEL)</td>
+          <td><code>test_sim_balance_enemigos</code>, <code>test_sim_reproducible</code> (Pasos 2 y 3)</td></tr>
+
+      <tr><td><span class="tag t-sim">SIM</span> Variable continua de estado (EDO)</td>
+          <td><code>simulation.py · Tower</code> — enfriamiento de Newton por tramos</td>
+          <td>Figura <code>02_temperatura</code> · brecha de fuga (Paso 5)</td></tr>
+
+      <tr><td><span class="tag t-val">VAL</span> Validación: simulación vs. fórmula cerrada</td>
+          <td>sim sin temperatura ≟ Erlang C</td>
+          <td><code>test_sim_concuerda_con_analitico_sin_temperatura</code> (Paso 2)</td></tr>
+
+      <tr><td><span class="tag t-val">VAL</span> Cuándo simular aporta sobre el modelo analítico</td>
+          <td>la temperatura rompe Markov → fuga sim ≫ analítica</td>
+          <td>Conclusión "Temperatura" (Paso 5)</td></tr>
+
+      <tr><td><span class="tag t-opt">ADV</span> Reducción de varianza · intervalos de confianza</td>
+          <td><code>experiments.py</code> — réplicas + streams independientes</td>
+          <td>Estudio 1 — IC 95% (Paso 6)</td></tr>
+
+      <tr><td><span class="tag t-opt">ADV</span> Sistemas no estacionarios (λ(t))</td>
+          <td><code>config.py · lam_schedule</code></td>
+          <td>Estudio 2 · <code>test_no_estacionario_respeta_tramos</code> (Pasos 6 y 2)</td></tr>
+
+      <tr><td><span class="tag t-opt">ADV</span> Disciplinas de cola con prioridad (regla cμ)</td>
+          <td><code>config.py · priority</code> + <code>simpy.PriorityStore</code></td>
+          <td>Estudio 4 · <code>test_prioridad_*</code> (Pasos 6 y 2)</td></tr>
+
+      <tr><td><span class="tag t-opt">ADV</span> Decisión / optimización económica</td>
+          <td>curva costo(c) en U → <code>c*</code></td>
+          <td>Figura <code>05_costo_optimo</code> (Paso 5)</td></tr>
+    </table>
+  </section>
+
+</main>
+
+<footer>
+  Tower Defense Estocástico · TP de Simulación de Sistemas · UCEMA · Ing. en Informática<br>
+  Repos: <code>rag-karpathy</code> (wiki) · <code>back</code> (SimPy) · <code>front</code> (Godot) ·
+  <code>presentaci-n</code> (deck) · Las cifras son de la corrida base (λ=0.4, μ=0.25, c=3, K=10, seed=42).
+</footer>
+
+</body>
+</html>
