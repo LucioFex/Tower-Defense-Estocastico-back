@@ -8,6 +8,24 @@ Idea clave: la cola FIFO única se modela con un `simpy.Store`. Cada torre es un
 proceso que hace `yield queue.get()` (FIFO). Una torre en COOLDOWN simplemente NO
 pide enemigos -> capacidad efectiva reducida (server breakdown). Esto rompe el
 supuesto markoviano y es justamente lo que hace necesaria la simulación.
+
+Relación con el ALGORITMO DE LISTA DE EVENTOS (Unidad III)
+----------------------------------------------------------
+La materia describe la simulación por eventos discretos como un reloj que SALTA de
+un evento al siguiente leyendo una "lista de eventos futuros" (FEL). SimPy no inventa
+nada nuevo: implementa ese mismo algoritmo y nos evita escribirlo a mano. El mapeo es:
+  - `env`                      = reloj de simulación + lista de eventos futuros (FEL).
+  - `env.now`                  = el reloj; avanza A SALTOS (de evento a evento), nunca
+                                 en pasos fijos de tiempo.
+  - `yield env.timeout(dt)`    = "agendá mi próximo evento dentro de dt" -> inserta el
+                                 evento ordenado en la FEL.
+  - `env.run(until=T)`         = bucle que extrae y procesa la FEL en orden cronológico
+                                 hasta el horizonte T.
+  - los procesos `arrivals` / `tower_proc` / `monitor` = las ENTIDADES cuyo avance
+                                 dispara los eventos (arribo, inicio/fin de servicio,
+                                 sobrecalentamiento, muestreo).
+O sea: leer este archivo "de arriba a abajo" es leer el algoritmo de lista de eventos
+del apunte, expresado con corrutinas en vez de un `while` con un heap explícito.
 """
 from __future__ import annotations
 
@@ -94,12 +112,20 @@ class SimResult:
     killed: int = 0
     leaked: int = 0
     base_hp: int = 0
-    # acumuladores de integrales temporales
-    q_area: float = 0.0
-    sys_area: float = 0.0
+    # --- Estimadores estadísticos de la corrida (Unidad III) ---
+    # Los promedios temporales NO se calculan con una fórmula cerrada, sino estimando
+    # el ÁREA BAJO LA CURVA del estado y dividiéndola por el horizonte T (ver _integrate):
+    #   Lq = q_area / T          (largo medio de cola)
+    #   L  = sys_area / T        (clientes medios en el sistema)
+    #   Wq = sum_wait_q / killed (espera media en cola)
+    #   W  = sum_time_sys / killed (tiempo medio en sistema)
+    # Estos cuatro estimadores deben cumplir la LEY DE LITTLE (L = λ_eff·W); que lo
+    # hagan es la prueba de consistencia del modelo (lo verifica test_sim_little).
+    q_area: float = 0.0          # ∫ queue_len dt   -> Lq
+    sys_area: float = 0.0        # ∫ in_system dt   -> L
     max_queue: int = 0
-    sum_wait_q: float = 0.0
-    sum_time_sys: float = 0.0
+    sum_wait_q: float = 0.0      # Σ esperas en cola  -> Wq
+    sum_time_sys: float = 0.0    # Σ tiempos en sistema -> W
     towers: list = field(default_factory=list)
     # espera en cola desagregada por tipo de enemigo (para el estudio de prioridades)
     wait_by_type: dict = field(default_factory=dict)
@@ -139,7 +165,14 @@ class TowerDefenseSim:
         return len(self.queue.items) + self.serving
 
     def _integrate(self) -> None:
-        """Acumula áreas (queue_len, in_system) hasta env.now antes de un cambio."""
+        """Estimador por integración (área bajo la curva).
+
+        Entre dos eventos el estado (largo de cola, clientes en sistema) es CONSTANTE,
+        así que el área de ese tramo es un simple rectángulo `estado × dt`. Acumulando
+        esos rectángulos y dividiendo por el horizonte T se obtiene el promedio temporal
+        (Lq = ∫q dt / T, L = ∫n dt / T). Por eso se llama justo antes de cada evento que
+        cambia el estado: cierra el rectángulo del tramo que termina.
+        """
         now = self.env.now
         dt = now - self._last_int_t
         if dt > 0:

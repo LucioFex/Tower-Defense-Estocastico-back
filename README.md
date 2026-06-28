@@ -76,11 +76,11 @@ fórmula. Ver RAG.
 
 ## Resultados clave (escenario por defecto: λ=0.4, μ=0.25, c=3, K=10)
 
-- `c_min = 2` (mínimo para estabilidad ρ<1); `c* = 4` (óptimo económico torres+fugas).
+- `c_min = 2` (mínimo para estabilidad ρ<1); `c* = 3` (óptimo económico torres+fugas).
 - La 1ª torre sobre `c_min` captura **~89%** de la reducción total de cola →
-  **rendimiento marginal decreciente** (ΔLq por torre ≈ [2.5, 0.25, 0.05, 0.01]).
-- **Ley de Little** verificada (error ~1.6%) → modelo consistente.
-- Fuga simulada (~6.6%) ≫ analítica M/M/c/K (~0.16%): la brecha la explica la
+  **rendimiento marginal decreciente** (ΔLq por torre ≈ [2.53, 0.25, 0.05, 0.01]).
+- **Ley de Little** verificada (error ~1.2%) → modelo consistente.
+- Fuga simulada (~4.0%) ≫ analítica M/M/c/K (~0.16%): la brecha la explica la
   **indisponibilidad por temperatura** (validación de la hipótesis H3).
 
 ## Salida
