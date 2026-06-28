@@ -11,7 +11,8 @@
     --code:#0b0d12; --ok:#37e0a6; --chip:#222a38;
     --u2:#4aa8ff; --u3:#37e0a6; --sim:#b98bff; --val:#ffce4a; --opt:#ff8fc7;
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{margin:12mm 0}
   html{scroll-behavior:smooth}
   body{margin:0;background:var(--bg);color:var(--ink);
     font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
@@ -97,6 +98,20 @@
     border-radius:10px;padding:12px 15px;margin:14px 0;font-size:14.5px}
   .note.warn{background:rgba(255,206,74,.08);border-color:rgba(255,206,74,.4)}
 
+  /* ---------- recorrido del código ---------- */
+  .card.walk{border-left:3px solid var(--sim)}
+  .wh{font-weight:700;font-size:16px;margin:0 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .wh .loc{margin-left:auto;font-family:"Cascadia Code",Consolas,monospace;font-size:12px;color:var(--muted);
+    background:var(--code);border:1px solid var(--line);border-radius:6px;padding:3px 9px;white-space:nowrap}
+  .look{margin:10px 0 0;font-size:14.5px;background:rgba(74,168,255,.07);border-left:2px solid var(--accent2);
+    padding:9px 13px;border-radius:0 8px 8px 0}
+  .look b{color:var(--accent2)}
+  .c-kw{color:#c792ea}        /* palabra clave */
+  .c-fn{color:#82aaff}        /* función / SimPy */
+  .c-str{color:#c3e88d}       /* string */
+  .c-an{color:var(--warn)}    /* ← anotación inline */
+  .card.walk pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;line-height:1.55;overflow:visible}
+
   /* ---------- toc ---------- */
   nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;
     padding:16px 20px;margin-top:26px}
@@ -135,6 +150,7 @@
       <li><a href="#resumen">Resumen de verificaciones</a></li>
       <li><a href="#setup">Paso 1 — Preparar el entorno</a></li>
       <li><a href="#tests">Paso 2 — Tests del modelo (17)</a></li>
+      <li><a href="#codigo">🔍 Recorrido del código SimPy</a></li>
       <li><a href="#main">Paso 3 — Simulación y export</a></li>
       <li><a href="#schema">Paso 4 — Auditoría del contrato</a></li>
       <li><a href="#analysis">Paso 5 — Análisis (Módulo B)</a></li>
@@ -150,7 +166,7 @@
     <div class="card">
       <p style="margin:0">Cada <b>torre = servidor</b> de un sistema M/M/c (cola FIFO única);
       cada <b>enemigo = cliente</b>; una <b>fuga = bloqueo</b> por capacidad finita <code>K</code>.
-      La <b>temperatura</b> (variable continua, ecuación diferencial de enfriamiento de Newton) apaga
+      La <b>temperatura</b> (variable continua que decae exponencial hacia la ambiente —ley de enfriamiento de Newton—) apaga
       torres sobrecalentadas, reduce la capacidad efectiva y <b>rompe el supuesto markoviano</b>:
       por eso <b>simular</b> aporta sobre la fórmula cerrada. El objeto de estudio <b>no es el juego</b>,
       sino la <b>validación del modelo de colas</b>.</p>
@@ -258,6 +274,92 @@
     </div>
   </section>
 
+  <!-- =================== CÓDIGO SIMPY =================== -->
+  <section id="codigo">
+    <h2><span class="num">🔍</span> Recorrido del código SimPy — dónde y qué mirar</h2>
+    <p class="lead">Toda la simulación vive en <code>simulation.py</code>. Estos son los <b>6 lugares clave</b>:
+       qué concepto de la materia implementa cada uno, el fragmento real y <b>qué mirar</b>.
+       Las referencias son <code>archivo : línea</code> sobre la versión actual del repo.</p>
+
+    <div class="card walk">
+      <div class="wh"><span class="tag t-sim">Eventos discretos</span> El reloj, la cola y los streams de azar
+        <span class="loc">simulation.py : 138–151</span></div>
+<pre>self.env   = <span class="c-fn">simpy.Environment()</span>            <span class="c-an">← reloj + lista de eventos futuros (FEL)</span>
+self.queue = <span class="c-fn">simpy.PriorityStore</span>(...) <span class="c-kw">if</span> sc.priority <span class="c-kw">else</span> <span class="c-fn">simpy.Store</span>(...)  <span class="c-com"># cola FIFO o con prioridad</span>
+self.towers     = [Tower(i, sc) <span class="c-kw">for</span> i <span class="c-kw">in</span> range(sc.c)]   <span class="c-com"># c servidores</span>
+self.stream_arr = ExponentialStream(sc.seed)             <span class="c-com"># azar de arribos  (stream propio)</span>
+self.stream_srv = ExponentialStream(sc.seed + 10_007)    <span class="c-com"># azar de servicio (stream propio)</span></pre>
+      <p class="look"><b>Qué mirar:</b> <code>simpy.Environment()</code> ES el <b>algoritmo de lista de eventos</b> de la Unidad III: el reloj salta de evento a evento, no en pasos fijos. <code>Store</code> es la <b>cola FIFO única</b>; cambiarla por <code>PriorityStore</code> da la disciplina con <b>prioridad</b>. Un stream de azar por fuente = <b>números aleatorios comunes</b> (misma semilla ⇒ misma corrida, y comparaciones justas entre escenarios).</p>
+    </div>
+
+    <div class="card walk">
+      <div class="wh"><span class="tag t-u3">Llegadas Poisson + bloqueo</span> ¿Cuándo aparece cada enemigo?
+        <span class="loc">simulation.py : 215–241</span></div>
+<pre><span class="c-kw">def</span> <span class="c-fn">arrivals</span>(self):
+    <span class="c-kw">while</span> True:
+        <span class="c-kw">yield</span> self.env.<span class="c-fn">timeout</span>(self.stream_arr.sample(self._current_lam()))  <span class="c-an">← Exp(λ): tiempo hasta el próximo arribo</span>
+        ...
+        <span class="c-kw">if</span> self.sc.K &gt; 0 <span class="c-kw">and</span> self._in_system() &gt;= self.sc.K:   <span class="c-an">← sistema lleno (capacidad K)</span>
+            self.res.leaked += 1                            <span class="c-com"># BLOQUEO = la "fuga" del juego</span>
+            self._ev(now, <span class="c-str">"leak"</span>, ...); <span class="c-kw">continue</span>
+        self.queue.<span class="c-fn">put</span>(enemy)                            <span class="c-com"># si hay lugar, entra a la cola</span></pre>
+      <p class="look"><b>Qué mirar:</b> la línea del <code>timeout(Exp(λ))</code> es <b>el criterio de cuándo llega cada goblin</b>: un <b>proceso de Poisson</b> de tasa λ (tiempos entre arribos exponenciales, sin memoria). El <code>if … &gt;= K</code> es el <b>sistema con pérdida</b>: el cliente que llega con todo ocupado se pierde — esa es la fuga.</p>
+    </div>
+
+    <div class="card walk">
+      <div class="wh"><span class="tag t-u3">Servidor + servicio</span> La torre atiende (FIFO, tiempo Exp(μ))
+        <span class="loc">simulation.py : 244–271</span></div>
+<pre><span class="c-kw">def</span> <span class="c-fn">tower_proc</span>(self, tower):
+    <span class="c-kw">while</span> True:
+        item = <span class="c-kw">yield</span> self.queue.<span class="c-fn">get</span>()      <span class="c-an">← FIFO: toma el siguiente (espera si la cola está vacía)</span>
+        ...
+        ts = self.stream_srv.sample(self.sc.mu * enemy[<span class="c-str">"mu_factor"</span>])  <span class="c-an">← tiempo de servicio Exp(μ)</span>
+        <span class="c-kw">yield</span> self.env.<span class="c-fn">timeout</span>(ts)            <span class="c-com"># la torre "dispara" durante ts</span>
+        ...
+        self._ev(now, <span class="c-str">"kill"</span>, ...)            <span class="c-com"># enemigo eliminado</span></pre>
+      <p class="look"><b>Qué mirar:</b> cada torre es un <b>servidor</b>; <code>queue.get()</code> implementa la <b>disciplina FIFO</b> (y espera sola cuando no hay trabajo); <code>Exp(μ)</code> es el <b>tiempo de servicio</b>. El <code>mu_factor</code> permite enemigos "fuertes/débiles" (V.A. discreta de tipo) sin tocar el motor.</p>
+    </div>
+
+    <div class="card walk">
+      <div class="wh"><span class="tag t-sim">Variable continua (EDO)</span> La temperatura que "rompe la fórmula"
+        <span class="loc">simulation.py : 59–68 · 274–285</span></div>
+<pre><span class="c-kw">def</span> <span class="c-fn">temp_at</span>(self, now):                  <span class="c-com"># variable CONTINUA de estado</span>
+    <span class="c-kw">if</span> self._heating: <span class="c-kw">return</span> self.temp + k_heat * dt          <span class="c-an">← rampa lineal al disparar</span>
+    <span class="c-kw">return</span> Ta + (self.temp - Ta) * math.exp(-k_cool * dt)   <span class="c-an">← decae exponencial hacia la ambiente (ley de Newton)</span>
+...
+<span class="c-kw">if</span> tower.temp &gt;= self.sc.T_max:          <span class="c-com"># se sobrecalentó</span>
+    tower.<span class="c-fn">go_cooldown</span>(now)                 <span class="c-an">← la torre deja de atender: cae la capacidad efectiva</span>
+    <span class="c-kw">yield</span> self.env.<span class="c-fn">timeout</span>(cd)            <span class="c-com"># espera a enfriarse hasta T_resume</span></pre>
+      <p class="look"><b>Qué mirar:</b> la temperatura es la <b>variable continua</b>, integrada por una <b>ley de enfriamiento exponencial</b> (de Newton) en forma cerrada por tramos. Al entrar en <code>cooldown</code> la torre deja de ser un servidor disponible → <b>rompe el supuesto markoviano</b> (c servidores siempre activos) → la M/M/c queda como <b>cota</b> y por eso simular aporta.</p>
+    </div>
+
+    <div class="card walk">
+      <div class="wh"><span class="tag t-u3">Estimadores · Ley de Little</span> De dónde salen Lq y L
+        <span class="loc">simulation.py : 167–182</span></div>
+<pre><span class="c-kw">def</span> <span class="c-fn">_integrate</span>(self):        <span class="c-com"># estimación por ÁREA BAJO LA CURVA</span>
+    dt = now - self._last_int_t
+    self.res.q_area   += len(self.queue.items) * dt   <span class="c-an">← ∫ (largo de cola) dt  → Lq</span>
+    self.res.sys_area += self._in_system()     * dt   <span class="c-an">← ∫ (clientes en sistema) dt → L</span></pre>
+      <p class="look"><b>Qué mirar:</b> L y Lq <b>no</b> salen de una fórmula, sino de <b>integrar el estado en el tiempo</b> (Lq = ∫cola dt / T) — el estimador estadístico de la simulación. Que después se cumpla <b>Little (L = λ·W)</b> es la prueba de consistencia interna (test <code>sim_little</code>, error ≈ 1.2%).</p>
+    </div>
+
+    <div class="card walk">
+      <div class="wh"><span class="tag t-sim">El motor</span> Leer <code>run()</code> = leer el algoritmo de lista de eventos
+        <span class="loc">simulation.py : 304–309</span></div>
+<pre><span class="c-kw">def</span> <span class="c-fn">run</span>(self):
+    self.env.<span class="c-fn">process</span>(self.arrivals())              <span class="c-com"># entidad: llegadas</span>
+    <span class="c-kw">for</span> tw <span class="c-kw">in</span> self.towers: self.env.<span class="c-fn">process</span>(self.tower_proc(tw))  <span class="c-com"># entidades: torres</span>
+    self.env.<span class="c-fn">process</span>(self.monitor())               <span class="c-com"># foto del estado cada dt_sample</span>
+    self.env.<span class="c-fn">run</span>(until=self.sc.sim_time)          <span class="c-an">← procesa la FEL en orden hasta el horizonte T</span></pre>
+      <p class="look"><b>Qué mirar:</b> registrás las entidades como <b>procesos</b> y <code>env.run(until=T)</code> extrae y procesa los eventos en orden cronológico hasta el horizonte. Eso es, literalmente, el <b>esquema de lista de eventos futuros</b> de la materia, sin escribir el <code>while</code>/heap a mano.</p>
+    </div>
+
+    <div class="note">🔗 <b>El azar que alimenta los <code>timeout</code>:</b> los <code>Exp(λ)</code> / <code>Exp(μ)</code> se generan por
+      <b>transformada inversa</b> en <code>prng.py : 53</code> → <code>exponencial_inversa(R, λ) = −(1/λ)·ln(1−R)</code>,
+      a partir de un generador <b>congruencial</b> reproducible (<code>prng.py : 22</code>). Las fórmulas cerradas contra
+      las que se valida (Erlang C / Erlang B) viven en <code>analytical.py</code>.</div>
+  </section>
+
   <!-- =================== MAIN =================== -->
   <section id="main">
     <h2><span class="num">3</span> Simulación + export del <code>output.json</code></h2>
@@ -331,8 +433,8 @@
         <tr><th>Estudio</th><th>Qué hace</th><th>Hallazgo</th></tr>
         <tr><td><b>1. Réplicas + IC 95%</b></td><td>Repite con N semillas y arma intervalos de confianza.</td><td><code>c* = 3</code> robusto (no depende de una corrida afortunada).</td></tr>
         <tr><td><b>2. No estacionario</b></td><td>Arribos en oleadas λ(t) (valle/pico).</td><td>Dimensionar al <b>promedio</b> → fuga 42% (base destruida); al <b>pico</b> → 10%. <b>Dimensionar al pico.</b></td></tr>
-        <tr><td><b>3. Tipos de enemigo</b></td><td>V.A. discreta con <b>igual media</b> de servicio, distinta varianza.</td><td>Más varianza ⇒ fuga +0.94 pp (intuición de Pollaczek-Khinchine).</td></tr>
-        <tr><td><b>4. Prioridad (regla cμ)</b></td><td>Atender al "fuerte" primero (no-preemptiva).</td><td>Wq del fuerte 4.24→2.15 s; el Wq total y la fuga no cambian (work-conserving): <b>reasigna</b> la espera.</td></tr>
+        <tr><td><b>3. Tipos de enemigo</b></td><td>V.A. discreta con <b>igual media</b> de servicio, distinta varianza.</td><td>A igual media, más <b>varianza</b> del servicio ⇒ fuga +0.94 pp (más variabilidad ⇒ más cola).</td></tr>
+        <tr><td><b>4. Prioridad</b></td><td>Atender al "fuerte" primero (disciplina con prioridad, sin desalojo).</td><td>Wq del fuerte 4.24→2.15 s; el Wq total y la fuga no cambian: <b>reparte</b> la espera entre clases.</td></tr>
       </table>
       <div class="proves">🎓 <b>Temas:</b> <b>reducción de varianza</b> (réplicas, números aleatorios comunes),
         sistemas <b>no estacionarios</b>, <b>variables aleatorias discretas</b>, y <b>disciplinas de cola</b> con prioridad.</div>
@@ -408,7 +510,7 @@ godot --headless --export-release "Web" builds/web/index.html</pre>
           <td><code>test_sim_balance_enemigos</code>, <code>test_sim_reproducible</code> (Pasos 2 y 3)</td></tr>
 
       <tr><td><span class="tag t-sim">SIM</span> Variable continua de estado (EDO)</td>
-          <td><code>simulation.py · Tower</code> — enfriamiento de Newton por tramos</td>
+          <td><code>simulation.py · Tower</code> — enfriamiento exponencial (Newton) por tramos</td>
           <td>Figura <code>02_temperatura</code> · brecha de fuga (Paso 5)</td></tr>
 
       <tr><td><span class="tag t-val">VAL</span> Validación: simulación vs. fórmula cerrada</td>
@@ -427,7 +529,7 @@ godot --headless --export-release "Web" builds/web/index.html</pre>
           <td><code>config.py · lam_schedule</code></td>
           <td>Estudio 2 · <code>test_no_estacionario_respeta_tramos</code> (Pasos 6 y 2)</td></tr>
 
-      <tr><td><span class="tag t-opt">ADV</span> Disciplinas de cola con prioridad (regla cμ)</td>
+      <tr><td><span class="tag t-opt">ADV</span> Disciplinas de cola con prioridad</td>
           <td><code>config.py · priority</code> + <code>simpy.PriorityStore</code></td>
           <td>Estudio 4 · <code>test_prioridad_*</code> (Pasos 6 y 2)</td></tr>
 
